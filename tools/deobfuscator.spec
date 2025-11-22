@@ -5,7 +5,7 @@ a = Analysis(
     ['deobfuscator_console.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('dumper.lua', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

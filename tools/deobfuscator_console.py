@@ -12,147 +12,17 @@ _a2 = base64.b64decode(b'SFVUQU9TSFVTQkFORA==').decode()
 _a3 = lambda: f"{_a1} {_a2}"
 _verify_attr = lambda s: _a2.lower() in s.lower()
 
-DUMPER_LUA_CONTENT = r"""
-local OBFUSCATED_SCRIPT = [[
--- PASTE YOUR OBFUSCATED SCRIPT HERE --
-]]
-
-local LOG_CALLS = true
-
-local RealEnv = getfenv()
-local MockEnv = {}
-
-local function Log(msg)
-    for line in string.gmatch(msg, "[^\r\n]+") do
-        print("[DUMP] " .. line)
-    end
-end
-
-local function DebugLog(msg)
-    print("[DEBUG] " .. msg)
-end
-
-local function FormatValue(val, depth)
-    depth = depth or 0
-    if depth > 2 then return "..." end
-    
-    if type(val) == "string" then
-        return string.format("%q", val)
-    elseif type(val) == "table" then
-        return "{...}"
-    elseif type(val) == "function" then
-        return "function()"
-    else
-        return tostring(val)
-    end
-end
-
-local function CreateProxy(name, path)
-    local proxy = newproxy(true)
-    local meta = getmetatable(proxy)
-    
-    meta.__index = function(t, k)
-        local newPath = path .. "." .. tostring(k)
-        
-        if k == "StarterGui" and name == "game" then
-            return CreateProxy("StarterGui", "game.StarterGui")
-        end
-        
-        if k == "SetCore" then
-            return function(self, method, args)
-                if method == "SendNotification" then
-                    local argsStr = "{"
-                    if type(args) == "table" then
-                        for ak, av in pairs(args) do
-                            local valStr = tostring(av)
-                            if type(av) == "string" then valStr = string.format("%q", av) end
-                            argsStr = argsStr .. "\n    " .. tostring(ak) .. " = " .. valStr .. ";"
-                        end
-                    end
-                    argsStr = argsStr .. "\n}"
-                    Log(string.format('game.StarterGui:SetCore("SendNotification", %s)', argsStr))
-                else
-                    Log(string.format('%s:SetCore(%s, ...)', path, FormatValue(method)))
-                end
-            end
-        end
-
-        if RealEnv[k] then return RealEnv[k] end
-        
-        return CreateProxy(k, newPath)
-    end
-    
-    meta.__newindex = function(t, k, v)
-    end
-    
-    meta.__call = function(t, ...)
-        local args = {...}
-        return CreateProxy("Result", path .. "()")
-    end
-    
-    meta.__tostring = function()
-        return name
-    end
-    
-    return proxy
-end
-
-local Bit32 = {}
-function Bit32.band(a, b) return 0 end
-function Bit32.bor(a, b) return 0 end
-function Bit32.bxor(a, b) return 0 end
-function Bit32.bnot(a) return 0 end
-function Bit32.lshift(a, b) return 0 end
-function Bit32.rshift(a, b) return 0 end
-
-setmetatable(MockEnv, {
-    __index = function(t, k)
-        if k == "game" then return CreateProxy("game", "game") end
-        if k == "script" then return CreateProxy("script", "script") end
-        if k == "wait" then return function(n) end end
-        if k == "spawn" then return function(f) f() end end
-        if k == "delay" then return function(n, f) f() end end
-        if k == "print" then return function(...) end end
-        if k == "warn" then return function(...) end end
-        if k == "bit" or k == "bit32" then return Bit32 end
-        
-        if RealEnv[k] then return RealEnv[k] end
-        
-        return nil
-    end,
-    __newindex = function(t, k, v)
-        RealEnv[k] = v
-    end
-})
-
-if not newproxy then
-    function newproxy(u)
-        local t = {}
-        if u then
-            local mt = {}
-            setmetatable(t, mt)
-        end
-        return t
-    end
-end
-
-local func, err = loadstring(OBFUSCATED_SCRIPT)
-if func then
-    setfenv(func, MockEnv)
-    local status, err = pcall(func)
-    if not status then
-        print("Error running script: " .. tostring(err))
-    end
-else
-    print("Failed to load script: " .. tostring(err))
-end
-"""
-
 def beep():
     try:
         winsound.Beep(2000, 50)
     except:
         pass
+
+def get_resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
 
 def find_lua_executable():
     if getattr(sys, 'frozen', False):
@@ -211,8 +81,30 @@ def main():
 
     beep()
 
-    template = DUMPER_LUA_CONTENT.encode('utf-8')
+    # Read dumper.lua from resources
+    # If running from source (tools/deobfuscator_console.py), dumper.lua is in tools/dumper.lua
+    # If running from frozen exe, it should be in sys._MEIPASS/dumper.lua
     
+    if getattr(sys, 'frozen', False):
+         dumper_path = get_resource_path('dumper.lua')
+    else:
+         # Assuming script is in tools/
+         tools_dir = os.path.dirname(os.path.abspath(__file__))
+         dumper_path = os.path.join(tools_dir, 'dumper.lua')
+
+    if not os.path.exists(dumper_path):
+         print(f"Error: dumper.lua not found at {dumper_path}")
+         time.sleep(5)
+         return
+
+    try:
+        with open(dumper_path, 'rb') as f:
+            template = f.read()
+    except Exception as e:
+        print(f"Error reading dumper template: {e}")
+        time.sleep(3)
+        return
+
     try:
         with open(target_path, 'rb') as f:
             obfuscated_content = f.read()

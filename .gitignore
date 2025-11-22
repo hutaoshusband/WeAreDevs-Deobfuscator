@@ -1,0 +1,8 @@
+build/
+dist/
+tools/build/
+tools/dist/
+*.spec
+!tools/deobfuscator.spec
+__pycache__/
+*.pyc

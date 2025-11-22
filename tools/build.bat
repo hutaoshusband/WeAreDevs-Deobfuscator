@@ -2,8 +2,9 @@
 echo Building WeAreDevs Deobfuscator...
 echo.
 
-pyinstaller --onefile --name deobfuscator --clean deobfuscator_console.py
+cd /d "%~dp0"
+pyinstaller --clean deobfuscator.spec
 
 echo.
-echo Builded!
+echo Builded! Output is in dist/
 pause

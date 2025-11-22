@@ -125,13 +125,68 @@ function task.spawn(f, ...) if f then f(...) end end
 function task.defer(f, ...) if f then f(...) end end
 function task.delay(t, f, ...) if f then f(...) end end
 
+-- Pure Lua Bitwise Implementation for Lua 5.1
 local Bit32 = {}
-function Bit32.band(a, b) return 0 end
-function Bit32.bor(a, b) return 0 end
-function Bit32.bxor(a, b) return 0 end
-function Bit32.bnot(a) return 0 end
-function Bit32.lshift(a, b) return 0 end
-function Bit32.rshift(a, b) return 0 end
+
+local function to_bits(n)
+    n = math.floor(n)
+    local bits = {}
+    for i = 1, 32 do
+        local r = n % 2
+        bits[i] = r
+        n = (n - r) / 2
+    end
+    return bits
+end
+
+local function from_bits(bits)
+    local n = 0
+    local p = 1
+    for i = 1, 32 do
+        if bits[i] == 1 then n = n + p end
+        p = p * 2
+    end
+    return n
+end
+
+function Bit32.band(a, b)
+    local ba, bb = to_bits(a), to_bits(b)
+    local res = {}
+    for i = 1, 32 do res[i] = (ba[i] == 1 and bb[i] == 1) and 1 or 0 end
+    return from_bits(res)
+end
+
+function Bit32.bor(a, b)
+    local ba, bb = to_bits(a), to_bits(b)
+    local res = {}
+    for i = 1, 32 do res[i] = (ba[i] == 1 or bb[i] == 1) and 1 or 0 end
+    return from_bits(res)
+end
+
+function Bit32.bxor(a, b)
+    local ba, bb = to_bits(a), to_bits(b)
+    local res = {}
+    for i = 1, 32 do res[i] = (ba[i] ~= bb[i]) and 1 or 0 end
+    return from_bits(res)
+end
+
+function Bit32.bnot(a)
+    local ba = to_bits(a)
+    local res = {}
+    for i = 1, 32 do res[i] = (ba[i] == 0) and 1 or 0 end
+    return from_bits(res)
+end
+
+function Bit32.lshift(a, b)
+    return (math.floor(a) * (2 ^ math.floor(b))) % (2 ^ 32)
+end
+
+function Bit32.rshift(a, b)
+    return math.floor(math.floor(a) / (2 ^ math.floor(b)))
+end
+
+-- Aliases
+Bit32.arshift = Bit32.rshift
 
 local function MockNext(t, k)
     if type(t) == "userdata" then return nil end
@@ -148,6 +203,42 @@ local function MockIPairs(t)
     return ipairs(t)
 end
 
+local function MockPrint(...)
+    local args = {...}
+    local str = ""
+    for i, v in ipairs(args) do
+        str = str .. tostring(v) .. (i < #args and "\t" or "")
+    end
+    Log("PRINT: " .. str)
+end
+
+-- Mock String Library
+local MockString = {}
+for k, v in pairs(string) do MockString[k] = v end
+function MockString.char(...)
+    local res = string.char(...)
+    -- if string.find(res, "http") then
+    --     Log("STRING.CHAR FOUND URL: " .. res)
+    -- end
+    return res
+end
+
+-- Mock Table Library
+local MockTable = {}
+for k, v in pairs(table) do MockTable[k] = v end
+function MockTable.concat(t, sep, i, j)
+    local res = table.concat(t, sep, i, j)
+    if type(res) == "string" then
+        if string.len(res) > 100 then
+             Log("TABLE.CONCAT LARGE STRING (len="..string.len(res)..")")
+             if string.find(res, "http") then
+                 Log("TABLE.CONCAT FOUND URL: " .. res)
+             end
+        end
+    end
+    return res
+end
+
 if not math.clamp then math.clamp = function(x, min, max) return x < min and min or (x > max and max or x) end end
 
 setmetatable(MockEnv, {
@@ -157,8 +248,8 @@ setmetatable(MockEnv, {
         if k == "wait" then return function(n) end end
         if k == "spawn" then return function(f) f() end end
         if k == "delay" then return function(n, f) f() end end
-        if k == "print" then return function(...) end end
-        if k == "warn" then return function(...) end end
+        if k == "print" then return MockPrint end
+        if k == "warn" then return MockPrint end
         if k == "bit" or k == "bit32" then return Bit32 end
         if k == "CFrame" then return CFrame end
         if k == "Color3" then return Color3 end
@@ -171,6 +262,8 @@ setmetatable(MockEnv, {
         if k == "pairs" then return MockPairs end
         if k == "ipairs" then return MockIPairs end
         if k == "next" then return MockNext end
+        if k == "string" then return MockString end
+        if k == "table" then return MockTable end
         
         if RealEnv[k] then return RealEnv[k] end
         return nil
@@ -194,10 +287,24 @@ end
 local func, err = loadstring(OBFUSCATED_SCRIPT)
 if func then
     setfenv(func, MockEnv)
-    local status, err = pcall(func)
-    if not status then
-        print("Error running script: " .. tostring(err))
+    Log("Executing script...")
+    local status, result = pcall(func)
+    if status then
+         Log("Script finished successfully")
+         if result then
+             Log("RETURN TYPE: " .. type(result))
+             if type(result) == "string" then
+                 Log("RETURN LEN: " .. string.len(result))
+                 Log("RETURN VAL: " .. result)
+             else
+                 Log("RETURN VAL: " .. tostring(result))
+             end
+         else
+             Log("RETURN VAL: nil")
+         end
+    else
+        Log("Error running script: " .. tostring(result))
     end
 else
-    print("Failed to load script: " .. tostring(err))
+    Log("Failed to load script: " .. tostring(err))
 end
