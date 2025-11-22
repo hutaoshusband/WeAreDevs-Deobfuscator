@@ -34,8 +34,12 @@ local function CreateProxy(name, path)
     meta.__index = function(t, k)
         local newPath = path .. "." .. tostring(k)
         
-        if k == "StarterGui" and name == "game" then
-            return CreateProxy("StarterGui", "game.StarterGui")
+        if name == "game" then
+            if k == "PlaceId" then return 123456 end
+            if k == "JobId" then return "deadbeef-1234-5678-9abc-def012345678" end
+            if k == "StarterGui" then
+                return CreateProxy("StarterGui", "game.StarterGui")
+            end
         end
         
         if k == "SetCore" then
@@ -76,6 +80,14 @@ local function CreateProxy(name, path)
     meta.__call = function(t, ...)
         return CreateProxy("Result", path .. "()")
     end
+    
+    meta.__concat = function(a, b)
+        return tostring(a) .. tostring(b)
+    end
+    
+    meta.__len = function(t)
+        return #tostring(t)
+    end
 
     meta.__tostring = function() return name end
     return proxy
@@ -91,6 +103,7 @@ end
 function CFrame:__mul(other) return CFrame.new() end
 function CFrame:__add(other) return CFrame.new() end
 function CFrame:__sub(other) return CFrame.new() end
+function CFrame:__tostring() return "0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1" end
 
 local Color3 = {}
 Color3.__index = Color3
@@ -100,14 +113,35 @@ function Color3.new(r, g, b)
     return t
 end
 function Color3.fromRGB(r, g, b) return Color3.new(r/255, g/255, b/255) end
+function Color3:__tostring() return string.format("%f, %f, %f", self.r, self.g, self.b) end
 
 local UDim2 = {}
 UDim2.__index = UDim2
 function UDim2.new(...) return setmetatable({}, UDim2) end
+function UDim2:__tostring() return "{0, 0}, {0, 0}" end
 
 local Vector3 = {}
 Vector3.__index = Vector3
 function Vector3.new(...) return setmetatable({x=0,y=0,z=0}, Vector3) end
+function Vector3:__tostring() return "0, 0, 0" end
+
+local Vector2 = {}
+Vector2.__index = Vector2
+function Vector2.new(x, y) return setmetatable({x=x or 0, y=y or 0}, Vector2) end
+function Vector2:__tostring() return string.format("Vector2.new(%s, %s)", self.x, self.y) end
+
+local Drawing = {}
+local DrawingObject = {}
+DrawingObject.__index = DrawingObject
+function Drawing.new(type)
+    local obj = {Visible = false, Type = type, Transparency = 1, Color = Color3.new(1,1,1), Thickness = 1}
+    setmetatable(obj, DrawingObject)
+    return obj
+end
+function DrawingObject:Remove() end
+function DrawingObject:Destroy() end
+function DrawingObject:__tostring() return "Drawing" end
+
 
 local Instance = {}
 function Instance.new(className)
@@ -212,6 +246,22 @@ local function MockPrint(...)
     Log("PRINT: " .. str)
 end
 
+-- Mock Loadstring
+local function MockLoadstring(str, chunkname)
+    Log("LOADSTRING DETECTED (len=" .. string.len(str) .. ")")
+    if string.len(str) > 0 then
+         local snippet = string.sub(str, 1, 500)
+         if string.len(str) > 500 then snippet = snippet .. "..." end
+         Log("LOADSTRING CONTENT: " .. snippet)
+    end
+    
+    local func, err = loadstring(str, chunkname)
+    if func then
+        setfenv(func, MockEnv) -- Ensure the loaded chunk uses our mock env
+    end
+    return func, err
+end
+
 -- Mock String Library
 local MockString = {}
 for k, v in pairs(string) do MockString[k] = v end
@@ -231,9 +281,10 @@ function MockTable.concat(t, sep, i, j)
     if type(res) == "string" then
         if string.len(res) > 100 then
              Log("TABLE.CONCAT LARGE STRING (len="..string.len(res)..")")
-             if string.find(res, "http") then
-                 Log("TABLE.CONCAT FOUND URL: " .. res)
-             end
+             -- Log("TABLE.CONCAT CONTENT: " .. res)
+             local snippet = string.sub(res, 1, 500)
+             if string.len(res) > 500 then snippet = snippet .. "..." end
+             Log("TABLE.CONCAT CONTENT: " .. snippet)
         end
     end
     return res
@@ -255,6 +306,8 @@ setmetatable(MockEnv, {
         if k == "Color3" then return Color3 end
         if k == "UDim2" then return UDim2 end
         if k == "Vector3" then return Vector3 end
+        if k == "Vector2" then return Vector2 end
+        if k == "Drawing" then return Drawing end
         if k == "Instance" then return Instance end
         if k == "Enum" then return Enum end
         if k == "task" then return task end
@@ -264,6 +317,13 @@ setmetatable(MockEnv, {
         if k == "next" then return MockNext end
         if k == "string" then return MockString end
         if k == "table" then return MockTable end
+        if k == "loadstring" then return MockLoadstring end
+        if k == "load" then return MockLoadstring end
+        
+        if k == "getgenv" then return function() return MockEnv end end
+        if k == "getrenv" then return function() return RealEnv end end
+        if k == "checkcaller" then return function() return true end end
+        if k == "identifyexecutor" or k == "getexecutorname" then return function() return "Synapse X", "2.0.0" end end
         
         if RealEnv[k] then return RealEnv[k] end
         return nil
