@@ -4,8 +4,19 @@ import subprocess
 import tempfile
 import shutil
 import time
-import winsound
+try:
+    import winsound
+except ImportError:
+    winsound = None
 import base64
+
+# Import the string extractor
+try:
+    from extract_strings import get_decrypted_strings
+except ImportError:
+    # Handle cases where run from a different directory or PyInstaller
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    from extract_strings import get_decrypted_strings
 
 _a1 = base64.b64decode(b'TWFkZSBieQ==').decode()
 _a2 = base64.b64decode(b'SFVUQU9TSFVTQkFORA==').decode()
@@ -73,120 +84,152 @@ def main():
 
     beep()
 
-    lua_exec = find_lua_executable()
-    if not lua_exec:
-        print("Error: No Lua interpreter found. Please install lua5.1, lua, or luajit, or place lua.exe next to this executable.")
-        time.sleep(5)
-        return
-
-    beep()
-
-    # Read dumper.lua from resources
-    # If running from source (tools/deobfuscator_console.py), dumper.lua is in tools/dumper.lua
-    # If running from frozen exe, it should be in sys._MEIPASS/dumper.lua
+    # Menu Selection
+    print("\nSelect Mode:")
+    print("1. Dump Constants")
+    print("2. Deobfuscate (might not fully work)")
+    print("choice: ", end='', flush=True)
     
-    if getattr(sys, 'frozen', False):
-         dumper_path = get_resource_path('dumper.lua')
-    else:
-         # Assuming script is in tools/
-         tools_dir = os.path.dirname(os.path.abspath(__file__))
-         dumper_path = os.path.join(tools_dir, 'dumper.lua')
-
-    if not os.path.exists(dumper_path):
-         print(f"Error: dumper.lua not found at {dumper_path}")
-         time.sleep(5)
-         return
-
     try:
-        with open(dumper_path, 'rb') as f:
-            template = f.read()
-    except Exception as e:
-        print(f"Error reading dumper template: {e}")
-        time.sleep(3)
+        choice = input().strip()
+    except EOFError:
         return
-
-    try:
-        with open(target_path, 'rb') as f:
-            obfuscated_content = f.read()
-    except Exception as e:
-        print(f"Error reading file: {e}")
-        time.sleep(3)
-        return
-
-    beep()
-
-    placeholder = b"-- PASTE YOUR OBFUSCATED SCRIPT HERE --"
-    
-    level = 0
-    while True:
-        eq = b"=" * level
-        start_delim = b"[" + eq + b"["
-        end_delim = b"]" + eq + b"]"
-        if end_delim not in obfuscated_content:
-            break
-        level += 1
         
-    match_start = template.find(b"local OBFUSCATED_SCRIPT =")
-    ph_start = template.find(placeholder)
-    
-    if match_start == -1 or ph_start == -1:
-        print("Internal Error: Template structure corrupted.")
-        time.sleep(3)
-        return
+    if choice == '1':
+        # Dump Constants Mode
+        print("\nProcessing strings...")
+        try:
+            with open(target_path, 'r', encoding='latin1') as f:
+                content = f.read()
+            
+            decrypted = get_decrypted_strings(content)
+            
+            if decrypted:
+                for s in decrypted:
+                    print(s)
+                    beep()
+                    time.sleep(0.001)
+                print("\nDump complete.")
+            else:
+                print("No strings found or decryption failed.")
+                
+        except Exception as e:
+            print(f"Error processing strings: {e}")
+            
+    elif choice == '2':
+        # Deobfuscate Mode (Existing Logic)
+        lua_exec = find_lua_executable()
+        if not lua_exec:
+            print("Error: No Lua interpreter found. Please install lua5.1, lua, or luajit, or place lua.exe next to this executable.")
+            time.sleep(5)
+            return
 
-    if b"]]" not in obfuscated_content:
-        final_script = template.replace(placeholder, obfuscated_content)
-    else:
-        open_bracket_pos = template.rfind(b"[[", 0, ph_start)
-        close_bracket_pos = template.find(b"]]", ph_start)
-        
-        if open_bracket_pos == -1 or close_bracket_pos == -1:
-            print("Internal Error: Could not find delimiters in template.")
+        beep()
+
+        if getattr(sys, 'frozen', False):
+             dumper_path = get_resource_path('dumper.lua')
+        else:
+             tools_dir = os.path.dirname(os.path.abspath(__file__))
+             dumper_path = os.path.join(tools_dir, 'dumper.lua')
+
+        if not os.path.exists(dumper_path):
+             print(f"Error: dumper.lua not found at {dumper_path}")
+             time.sleep(5)
+             return
+
+        try:
+            with open(dumper_path, 'rb') as f:
+                template = f.read()
+        except Exception as e:
+            print(f"Error reading dumper template: {e}")
             time.sleep(3)
             return
-            
-        part1 = template[:open_bracket_pos]
-        part2 = template[close_bracket_pos+2:]
-        
-        final_script = part1 + start_delim + b"\n" + obfuscated_content + b"\n" + end_delim + part2
 
-    beep()
+        try:
+            with open(target_path, 'rb') as f:
+                obfuscated_content = f.read()
+        except Exception as e:
+            print(f"Error reading file: {e}")
+            time.sleep(3)
+            return
 
-    with tempfile.NamedTemporaryFile(mode='wb', suffix='.lua', delete=False) as tmp:
-        tmp.write(final_script)
-        tmp_path = tmp.name
-    
-    try:
-        result = subprocess.run([lua_exec, tmp_path], capture_output=True)
+        beep()
+
+        placeholder = b"-- PASTE YOUR OBFUSCATED SCRIPT HERE --"
         
-        stdout = result.stdout.decode('utf-8', errors='replace')
-        stderr = result.stderr.decode('utf-8', errors='replace')
-        
-        dumped_lines = []
-        for line in stdout.splitlines():
-            if "[DUMP]" in line:
-                dumped_lines.append(line.replace("[DUMP] ", ""))
-        
-        if stderr:
-             if "Error" in stderr or "stack traceback" in stderr:
-                 print(f"Lua Error: {stderr}")
-        
-        if dumped_lines:
-            base, ext = os.path.splitext(target_path)
-            output_path = f"{base}_deobfuscated{ext}"
+        level = 0
+        while True:
+            eq = b"=" * level
+            start_delim = b"[" + eq + b"["
+            end_delim = b"]" + eq + b"]"
+            if end_delim not in obfuscated_content:
+                break
+            level += 1
             
-            with open(output_path, 'w', encoding='utf-8') as out_f:
-                out_f.write("\n".join(dumped_lines))
-            
-            print(f"Saved to {output_path}")
-            beep()
+        match_start = template.find(b"local OBFUSCATED_SCRIPT =")
+        ph_start = template.find(placeholder)
+        
+        if match_start == -1 or ph_start == -1:
+            print("Internal Error: Template structure corrupted.")
+            time.sleep(3)
+            return
+
+        if b"]]" not in obfuscated_content:
+            final_script = template.replace(placeholder, obfuscated_content)
         else:
-            print("No deobfuscated content found.")
+            open_bracket_pos = template.rfind(b"[[", 0, ph_start)
+            close_bracket_pos = template.find(b"]]", ph_start)
             
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+            if open_bracket_pos == -1 or close_bracket_pos == -1:
+                print("Internal Error: Could not find delimiters in template.")
+                time.sleep(3)
+                return
+                
+            part1 = template[:open_bracket_pos]
+            part2 = template[close_bracket_pos+2:]
+            
+            final_script = part1 + start_delim + b"\n" + obfuscated_content + b"\n" + end_delim + part2
+
+        beep()
+
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.lua', delete=False) as tmp:
+            tmp.write(final_script)
+            tmp_path = tmp.name
+        
+        try:
+            result = subprocess.run([lua_exec, tmp_path], capture_output=True)
+            
+            stdout = result.stdout.decode('utf-8', errors='replace')
+            stderr = result.stderr.decode('utf-8', errors='replace')
+            
+            dumped_lines = []
+            for line in stdout.splitlines():
+                if "[DUMP]" in line:
+                    dumped_lines.append(line.replace("[DUMP] ", ""))
+            
+            if stderr:
+                 if "Error" in stderr or "stack traceback" in stderr:
+                     print(f"Lua Error: {stderr}")
+            
+            if dumped_lines:
+                base, ext = os.path.splitext(target_path)
+                output_path = f"{base}_deobfuscated{ext}"
+                
+                with open(output_path, 'w', encoding='utf-8') as out_f:
+                    out_f.write("\n".join(dumped_lines))
+                
+                print(f"Saved to {output_path}")
+                beep()
+            else:
+                print("No deobfuscated content found.")
+                
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
     
+    else:
+        print("Invalid selection.")
+
     if not _display_credits(100):
         print(_a3())
     

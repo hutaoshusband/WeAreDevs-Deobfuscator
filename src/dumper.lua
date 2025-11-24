@@ -1,3 +1,4 @@
+-- Credits: HUTAOSHUSBAND
 local OBFUSCATED_SCRIPT = [[
 -- PASTE YOUR OBFUSCATED SCRIPT HERE --
 ]]
@@ -27,6 +28,9 @@ local function FormatValue(val, depth)
     end
 end
 
+-- Global registry for connections to allow inspection/triggering
+local ConnectionRegistry = {}
+
 local function CreateProxy(name, path)
     local proxy = newproxy(true)
     local meta = getmetatable(proxy)
@@ -39,6 +43,18 @@ local function CreateProxy(name, path)
             if k == "JobId" then return "deadbeef-1234-5678-9abc-def012345678" end
             if k == "StarterGui" then
                 return CreateProxy("StarterGui", "game.StarterGui")
+            end
+            if k == "HttpGet" or k == "HttpGetAsync" then
+                return function(self, url)
+                    Log(string.format('game:HttpGet("%s")', tostring(url)))
+                    return "KEY_1234_ABC_FAKE_PAYLOAD" -- Dummy return for key systems
+                end
+            end
+            if k == "GetService" then
+                 return function(self, serviceName)
+                     Log(string.format('game:GetService("%s")', tostring(serviceName)))
+                     return CreateProxy(serviceName, "game." .. tostring(serviceName))
+                 end
             end
         end
         
@@ -61,8 +77,25 @@ local function CreateProxy(name, path)
             end
         end
         
-        if k == "Connect" then 
+        if k == "Connect" or k == "connect" then 
              return function(self, callback)
+                 Log(string.format("Connect called on %s", path))
+                 table.insert(ConnectionRegistry, {path=path, callback=callback})
+                 
+                 -- Heuristic: If it looks like a button click, try to execute it
+                 if string.find(path, "Button") or string.find(path, "Click") or string.find(path, "Submit") then
+                     Log("  -> Auto-triggering potential button callback...")
+                     if type(callback) == "function" then
+                         -- Wrap in pcall to prevent crash if callback fails
+                         local s, e = pcall(callback)
+                         if not s then
+                             Log("  -> Callback failed: " .. tostring(e))
+                         else
+                             Log("  -> Callback executed successfully.")
+                         end
+                     end
+                 end
+                 
                  return CreateProxy("Connection", newPath .. ":Connect()")
              end
         end
@@ -93,57 +126,81 @@ local function CreateProxy(name, path)
     return proxy
 end
 
-local CFrame = {}
-CFrame.__index = CFrame
-function CFrame.new(...)
-    local t = {x=0, y=0, z=0}
-    setmetatable(t, CFrame)
-    return t
+local function MakeSafeObject(name, props, metafuncs)
+    local obj = props or {}
+    local mt = metafuncs or {}
+    mt.__index = mt.__index or obj
+    
+    -- Ensure concat works for Lua 5.1
+    if mt.__tostring and not mt.__concat then
+        mt.__concat = function(a, b) return tostring(a) .. tostring(b) end
+    end
+    
+    setmetatable(obj, mt)
+    return obj
 end
-function CFrame:__mul(other) return CFrame.new() end
-function CFrame:__add(other) return CFrame.new() end
-function CFrame:__sub(other) return CFrame.new() end
-function CFrame:__tostring() return "0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1" end
 
-local Color3 = {}
-Color3.__index = Color3
+-- Helper to make static libraries safe (concatable)
+local function MakeStaticLib(name, lib)
+    lib = lib or {}
+    local mt = {
+        __tostring = function() return name end,
+        __concat = function(a, b) return tostring(a) .. tostring(b) end
+    }
+    setmetatable(lib, mt)
+    return lib
+end
+
+local CFrame = MakeStaticLib("CFrame")
+function CFrame.new(...)
+    return MakeSafeObject("CFrame", {x=0, y=0, z=0}, {
+        __tostring = function() return "0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1" end,
+        __add = function() return CFrame.new() end,
+        __sub = function() return CFrame.new() end,
+        __mul = function() return CFrame.new() end
+    })
+end
+
+local Color3 = MakeStaticLib("Color3")
 function Color3.new(r, g, b)
-    local t = {r=r, g=g, b=b}
-    setmetatable(t, Color3)
-    return t
+    return MakeSafeObject("Color3", {r=r, g=g, b=b}, {
+        __tostring = function(self) return string.format("%f, %f, %f", self.r, self.g, self.b) end
+    })
 end
 function Color3.fromRGB(r, g, b) return Color3.new(r/255, g/255, b/255) end
-function Color3:__tostring() return string.format("%f, %f, %f", self.r, self.g, self.b) end
 
-local UDim2 = {}
-UDim2.__index = UDim2
-function UDim2.new(...) return setmetatable({}, UDim2) end
-function UDim2:__tostring() return "{0, 0}, {0, 0}" end
+local UDim2 = MakeStaticLib("UDim2")
+function UDim2.new(...) 
+    return MakeSafeObject("UDim2", {}, {
+        __tostring = function() return "{0, 0}, {0, 0}" end
+    })
+end
 
-local Vector3 = {}
-Vector3.__index = Vector3
-function Vector3.new(...) return setmetatable({x=0,y=0,z=0}, Vector3) end
-function Vector3:__tostring() return "0, 0, 0" end
+local Vector3 = MakeStaticLib("Vector3")
+function Vector3.new(...) 
+    return MakeSafeObject("Vector3", {x=0,y=0,z=0}, {
+        __tostring = function() return "0, 0, 0" end
+    })
+end
 
-local Vector2 = {}
-Vector2.__index = Vector2
-function Vector2.new(x, y) return setmetatable({x=x or 0, y=y or 0}, Vector2) end
-function Vector2:__tostring() return string.format("Vector2.new(%s, %s)", self.x, self.y) end
+local Vector2 = MakeStaticLib("Vector2")
+function Vector2.new(x, y) 
+    return MakeSafeObject("Vector2", {x=x or 0, y=y or 0}, {
+        __tostring = function(self) return string.format("Vector2.new(%s, %s)", self.x, self.y) end
+    })
+end
 
-local Drawing = {}
+local Drawing = MakeStaticLib("Drawing")
 local DrawingObject = {}
 DrawingObject.__index = DrawingObject
 function Drawing.new(type)
     local obj = {Visible = false, Type = type, Transparency = 1, Color = Color3.new(1,1,1), Thickness = 1}
-    setmetatable(obj, DrawingObject)
-    return obj
+    return MakeSafeObject("Drawing", obj, {
+        __tostring = function() return "Drawing" end
+    })
 end
-function DrawingObject:Remove() end
-function DrawingObject:Destroy() end
-function DrawingObject:__tostring() return "Drawing" end
 
-
-local Instance = {}
+local Instance = MakeStaticLib("Instance")
 function Instance.new(className)
     return CreateProxy(className, "Instance.new('" .. className .. "')")
 end
@@ -152,15 +209,17 @@ local Enum = newproxy(true)
 getmetatable(Enum).__index = function(t, k)
     return CreateProxy("Enum." .. k, "Enum." .. k)
 end
+getmetatable(Enum).__tostring = function() return "Enum" end
+getmetatable(Enum).__concat = function(a, b) return tostring(a) .. tostring(b) end
 
-local task = {}
+local task = MakeStaticLib("task")
 function task.wait(n) end
 function task.spawn(f, ...) if f then f(...) end end
 function task.defer(f, ...) if f then f(...) end end
 function task.delay(t, f, ...) if f then f(...) end end
 
 -- Pure Lua Bitwise Implementation for Lua 5.1
-local Bit32 = {}
+local Bit32 = MakeStaticLib("bit32")
 
 local function to_bits(n)
     n = math.floor(n)
@@ -310,25 +369,21 @@ local function MockLoadstring(str, chunkname)
 end
 
 -- Mock String Library
-local MockString = {}
+local MockString = MakeStaticLib("string", {})
 for k, v in pairs(string) do MockString[k] = v end
 function MockString.char(...)
     local res = string.char(...)
-    -- if string.find(res, "http") then
-    --     Log("STRING.CHAR FOUND URL: " .. res)
-    -- end
     return res
 end
 
 -- Mock Table Library
-local MockTable = {}
+local MockTable = MakeStaticLib("table", {})
 for k, v in pairs(table) do MockTable[k] = v end
 function MockTable.concat(t, sep, i, j)
     local res = table.concat(t, sep, i, j)
     if type(res) == "string" then
         if string.len(res) > 100 then
              Log("TABLE.CONCAT LARGE STRING (len="..string.len(res)..")")
-             -- Log("TABLE.CONCAT CONTENT: " .. res)
              local snippet = string.sub(res, 1, 500)
              if string.len(res) > 500 then snippet = snippet .. "..." end
              Log("TABLE.CONCAT CONTENT: " .. snippet)
@@ -339,9 +394,28 @@ end
 
 if not math.clamp then math.clamp = function(x, min, max) return x < min and min or (x > max and max or x) end end
 
+-- Env Proxy to handle 'getgenv' returning a concatable/indexable object that writes to MockEnv
+local EnvProxy = newproxy(true)
+local EnvMt = getmetatable(EnvProxy)
+EnvMt.__index = function(t, k) return MockEnv[k] end
+EnvMt.__newindex = function(t, k, v) MockEnv[k] = v end
+EnvMt.__tostring = function() return "EnvProxy" end
+EnvMt.__concat = function(a, b) return tostring(a) .. tostring(b) end
+
+-- Additional global mocks
+local function request(options)
+    Log("request/http_request called with url: " .. tostring(options.Url))
+    return {
+        StatusCode = 200,
+        Body = "KEY_1234_ABC_FAKE_PAYLOAD",
+        Headers = {}
+    }
+end
+
 setmetatable(MockEnv, {
     __index = function(t, k)
         if k == "game" then return CreateProxy("game", "game") end
+        if k == "workspace" then return CreateProxy("workspace", "workspace") end
         if k == "script" then return CreateProxy("script", "script") end
         if k == "wait" then return function(n) end end
         if k == "spawn" then return function(f) f() end end
@@ -366,12 +440,15 @@ setmetatable(MockEnv, {
         if k == "table" then return MockTable end
         if k == "loadstring" then return MockLoadstring end
         if k == "load" then return MockLoadstring end
+        if k == "setclipboard" then return function(s) Log("setclipboard: " .. tostring(s)) end end
         
-        if k == "getgenv" then return function() return MockEnv end end
+        if k == "getgenv" then return function() return EnvProxy end end
         if k == "getrenv" then return function() return RealEnv end end
         if k == "checkcaller" then return function() return true end end
         if k == "identifyexecutor" or k == "getexecutorname" then return function() return "Synapse X", "2.0.0" end end
         
+        if k == "request" or k == "http_request" then return request end
+
         if RealEnv[k] then return RealEnv[k] end
         return nil
     end,
