@@ -1,70 +1,112 @@
-# WeAreDevs Lua Deobfuscator
+# WeAreDevs LuaU Deobfuscator
 
 A toolkit for analyzing and deobfuscating Lua scripts protected by the WeAreDevs obfuscator (v1.0.0).
 
+**Important Notice**  
+This project is no longer developed publicly as open source.  
+All future updates, releases, improvements, and documentation will only be available at:
+
+https://fireflyprotector.xyz/wearedevs-deobfuscator
+
+The project remains completely free, but it is now closed-source.
+
+---
+```md
+[![Visit Website](https://img.shields.io/badge/Visit%20Website-FireflyProtector-blue?style=for-the-badge)](https://fireflyprotector.xyz/wearedevs-deobfuscator)
+```
+
+
+
+---
+
 ## Overview
 
-This project provides tools to dynamically analyze obfuscated Lua scripts by running them in a mocked Roblox/Exploit environment. It intercepts key function calls (like `loadstring`, `game:GetService`, `table.concat`) to reveal the underlying logic and payloads.
+The WeAreDevs Lua Deobfuscator provides tools for dynamically analyzing obfuscated Lua scripts in a mocked Roblox and exploit environment.  
+Its goal is to reveal reconstructed strings, intercepted function calls, loadstring payloads, and the general behavior of obfuscated scripts by simulating the execution environment used by Roblox exploits.
+
+---
 
 ## Tools
 
 ### 1. Dynamic Dumper (`tools/run_dumper.py`)
-The primary tool. It wraps the obfuscated script in a Lua environment mock (`tools/dumper.lua`) and executes it using Lua 5.1.
+
+The primary component of this project.  
+It executes obfuscated Lua inside a simulated environment defined in `tools/dumper.lua`.
 
 **Features:**
-- Mocks Roblox Globals: `game`, `workspace`, `script`, `Instance`, `Vector3`, `CFrame`, `Drawing`, etc.
-- Mocks Exploit Environment: `getgenv`, `checkcaller`, `identifyexecutor`.
-- Logging: Captures `print`, `warn`, `SetCore` notifications, and `loadstring` content.
-- Robustness: Handles complex obfuscation techniques involving string shuffling and proxy objects.
+- Mocks Roblox globals such as `game`, `workspace`, `Instance`, `Vector3`, `CFrame`, and `Drawing`.
+- Mocks exploit APIs including `getgenv`, `checkcaller`, and `identifyexecutor`.
+- Logs:
+  - `print` and `warn` outputs
+  - Notifications sent through `SetCore`
+  - Loadstring calls and their resulting code
+  - Large string constructions via `table.concat`
+- Built to handle complex and unusual obfuscation techniques such as proxy objects and shuffled string operations.
+
+---
 
 ### 2. Static Extractor (`tools/extract_strings.py`)
-Attempts to statically extract encrypted strings from the script file.
 
-## Prerequisites
+A static analysis tool that attempts to extract encoded or encrypted strings from obfuscated Lua scripts without executing them.
 
-- **Lua 5.1**: Required to run the dumper.
-  - Ubuntu/Debian: `sudo apt install lua5.1`
-  - MacOS: `brew install lua@5.1`
-  - Windows: Download from [LuaBinaries](http://luabinaries.sourceforge.net/) or place `lua.exe` next to the deobfuscator executable
+---
+
+## Requirements
+
+### Lua 5.1
+
+Lua 5.1 is required for the dumper to run.
+
+**Installation:**
+- Ubuntu/Debian:  
+  `sudo apt install lua5.1`
+- macOS:  
+  `brew install lua@5.1`
+- Windows:  
+  Download from LuaBinaries or place `lua.exe` next to `deobfuscator.exe`
+
+---
 
 ## Installation
 
-### Option 1: Pre-built Binary (Windows)
+### Option 1: Pre-Built Binary (Windows)
 
-Download the latest pre-built `deobfuscator.exe` from the [Releases](https://github.com/HUTAOSHUSBAND/WeAreDevs-Deobfuscator/releases) page.
+Download `deobfuscator.exe` from:
+
+https://fireflyprotector.xyz/wearedevs-deobfuscator
 
 **Requirements:**
-- Place `lua.exe` (Lua 5.1) in the same folder as `deobfuscator.exe`, or have it in your system PATH
+- `lua.exe` (Lua 5.1) must be next to the executable or available in your system PATH.
 
 **Usage:**
 1. Run `deobfuscator.exe`
-2. Drag and drop your obfuscated `.lua` file into the console
-3. The deobfuscated output will be saved as `filename_deobfuscated.lua`
+2. Drag and drop your obfuscated `.lua` file
+3. The output file will be created as `filename_deobfuscated.lua`
 
-### Option 2: Run from Source
+---
 
-Clone the repository and use the Python tools directly (see Usage section below).
+## Usage (Source Version)
 
-## Usage
-
-### Running the Dumper
-
-To analyze a single obfuscated file:
+### Analyze a single file
 ```bash
 python3 tools/run_dumper.py path/to/obfuscated_script.lua
 ```
 
-To analyze a directory of scripts:
+### Analyze an entire directory
 ```bash
 python3 tools/run_dumper.py path/to/folder/
 ```
 
-The tool will output the execution logs, including:
-- `[DUMP] ...`: Intercepted calls and values.
-- `LOADSTRING CONTENT`: The code being dynamically loaded (the payload).
-- `TABLE.CONCAT LARGE STRING`: Potential encrypted payloads being built.
+During execution, the dumper prints:
+- Intercepted Roblox calls
+- Detected loadstring usage
+- Contents of dynamically generated payloads
+- Large concatenated strings
+- General execution logs and behaviors
 
-### Example Output
+---
+
+## Example Output
 
 ```
 [DUMP] game.StarterGui:SetCore("SendNotification", { ... })
@@ -72,11 +114,19 @@ The tool will output the execution logs, including:
 [DUMP] LOADSTRING CONTENT: print("Hello World")
 ```
 
+---
+
 ## Status
 
-- **Basic/Hard Scripts**: Supported. The dumper successfully runs these scripts and captures notifications and string construction.
-- **Extreme Scripts**: Experimental. Some highly obfuscated scripts may crash due to sensitive anti-tamper checks or complex VM logic.
+| Level     | Support Status | Notes |
+|-----------|----------------|-------|
+| Basic     | Supported      | Standard obfuscation works reliably. |
+| Hard      | Supported      | Handles more complex string rebuilding and proxy behavior. |
+| Extreme   | Experimental   | May fail due to advanced VM logic or anti-tamper features. |
+
+---
 
 ## Documentation
 
-See [docs/DEOBFUSCATION_NOTES.md](docs/DEOBFUSCATION_NOTES.md) for detailed analysis notes.
+Additional documentation and internal notes can be found in:  
+`docs/DEOBFUSCATION_NOTES.md`
