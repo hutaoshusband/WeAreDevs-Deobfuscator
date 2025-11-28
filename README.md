@@ -1,4 +1,4 @@
-**# WeAreDevs LuaU Deobfuscator
+## WeAreDevs LuaU Deobfuscator
 
 A toolkit for analyzing and deobfuscating Lua scripts protected by the WeAreDevs obfuscator (v1.0.0).
 
