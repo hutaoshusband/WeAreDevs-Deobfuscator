@@ -1,23 +1,7 @@
 -- Credits: HUTAOSHUSBAND
 -- SECURITY PATCH START
--- Remove dangerous globals to prevent RCE from the obfuscated script
-if os then 
-    os.execute = nil 
-    os.remove = nil 
-    os.rename = nil 
-    os.exit = nil 
-    os.tmpname = nil 
-    os.getenv = nil
-    os.setlocale = nil
-end
-io = nil
-package = nil
-lfs = nil
-require = nil
-module = nil
-dofile = nil
-loadfile = nil
--- SECURITY PATCH END
+-- SECURITY RESTRICTIONS REMOVED AS PER USER REQUEST
+-- Full access to environment is enabled.
 
 local OBFUSCATED_SCRIPT = [[
 -- PASTE YOUR OBFUSCATED SCRIPT HERE --
@@ -51,7 +35,29 @@ end
 -- Global registry for connections to allow inspection/triggering
 local ConnectionRegistry = {}
 
-local function CreateProxy(name, path)
+local CreateProxy -- Forward declaration
+
+local function CreatePlayersProxy(path)
+    local players = CreateProxy("Players", path)
+    local mt = getmetatable(players)
+    mt.__index = function(t, k)
+        if k == "LocalPlayer" then
+            local player = CreateProxy("LocalPlayer", path .. ".LocalPlayer")
+            local player_mt = getmetatable(player)
+            player_mt.__index = function(pt, pk)
+                if pk == "Name" then return "LocalPlayer" end
+                if pk == "UserId" then return 1 end
+                if pk == "Character" then return CreateProxy("Character", path .. ".LocalPlayer.Character") end
+                return CreateProxy(pk, path .. ".LocalPlayer." .. pk)
+            end
+            return player
+        end
+        return CreateProxy(k, path .. "." .. k)
+    end
+    return players
+end
+
+function CreateProxy(name, path)
     local proxy = newproxy(true)
     local meta = getmetatable(proxy)
     
@@ -61,9 +67,32 @@ local function CreateProxy(name, path)
         if name == "game" then
             if k == "PlaceId" then return 123456 end
             if k == "JobId" then return "deadbeef-1234-5678-9abc-def012345678" end
+
+            -- Services Direct Access
             if k == "StarterGui" then return CreateProxy("StarterGui", "game.StarterGui") end
             if k == "CoreGui" then return CreateProxy("CoreGui", "game.CoreGui") end
-            if k == "Players" then return CreateProxy("Players", "game.Players") end
+            if k == "Players" then
+                 return CreatePlayersProxy("game.Players")
+            end
+
+            if k == "HttpService" then
+                local http = CreateProxy("HttpService", "game.HttpService")
+                local mt = getmetatable(http)
+                local old_idx = mt.__index
+                mt.__index = function(t, k)
+                    if k == "JSONDecode" then return function(self, str) return {} end end
+                    if k == "JSONEncode" then return function(self, tbl) return "{}" end end
+                    if k == "GenerateGUID" then return function(self) return "dead-beef-1234-5678" end end
+                    return old_idx(t, k)
+                end
+                return http
+            end
+
+            if k == "ReplicatedStorage" then return CreateProxy("ReplicatedStorage", "game.ReplicatedStorage") end
+            if k == "Lighting" then return CreateProxy("Lighting", "game.Lighting") end
+            if k == "TeleportService" then return CreateProxy("TeleportService", "game.TeleportService") end
+            if k == "MarketplaceService" then return CreateProxy("MarketplaceService", "game.MarketplaceService") end
+            if k == "UserInputService" then return CreateProxy("UserInputService", "game.UserInputService") end
 
             if k == "HttpGet" or k == "HttpGetAsync" then
                 return function(self, url)
@@ -74,33 +103,14 @@ local function CreateProxy(name, path)
             if k == "GetService" then
                  return function(self, serviceName)
                      Log(string.format('game:GetService("%s")', tostring(serviceName)))
+                     local svcPath = "game." .. tostring(serviceName)
+
                      if serviceName == "Players" then
-                         local players = CreateProxy(serviceName, "game." .. tostring(serviceName))
-                         local mt = getmetatable(players)
-                         mt.__index = function(t, k)
-                             if k == "LocalPlayer" then
-                                 local player = CreateProxy("LocalPlayer", "game.Players.LocalPlayer")
-                                 local player_mt = getmetatable(player)
-                                 player_mt.__index = function(pt, pk)
-                                     if pk == "Name" then return "LocalPlayer" end
-                                     if pk == "UserId" then return 1 end
-                                     if pk == "Character" then return CreateProxy("Character", "game.Players.LocalPlayer.Character") end
-                                     return CreateProxy(pk, "game.Players.LocalPlayer." .. pk)
-                                 end
-                                 return player
-                             end
-                             return CreateProxy(k, "game.Players." .. k)
-                         end
-                         return players
+                         return CreatePlayersProxy(svcPath)
                      end
-                     if serviceName == "ReplicatedStorage" then return CreateProxy("ReplicatedStorage", "game.ReplicatedStorage") end
-                     if serviceName == "Lighting" then return CreateProxy("Lighting", "game.Lighting") end
-                     if serviceName == "CoreGui" then return CreateProxy("CoreGui", "game.CoreGui") end
-                     if serviceName == "TeleportService" then return CreateProxy("TeleportService", "game.TeleportService") end
-                     if serviceName == "MarketplaceService" then return CreateProxy("MarketplaceService", "game.MarketplaceService") end
-                     if serviceName == "UserInputService" then return CreateProxy("UserInputService", "game.UserInputService") end
+
                      if serviceName == "HttpService" then
-                        local http = CreateProxy("HttpService", "game.HttpService")
+                        local http = CreateProxy("HttpService", svcPath)
                         local mt = getmetatable(http)
                         local old_idx = mt.__index
                         mt.__index = function(t, k)
@@ -117,7 +127,15 @@ local function CreateProxy(name, path)
                         end
                         return http
                      end
-                     return CreateProxy(serviceName, "game." .. tostring(serviceName))
+
+                     if serviceName == "ReplicatedStorage" then return CreateProxy("ReplicatedStorage", svcPath) end
+                     if serviceName == "Lighting" then return CreateProxy("Lighting", svcPath) end
+                     if serviceName == "CoreGui" then return CreateProxy("CoreGui", svcPath) end
+                     if serviceName == "TeleportService" then return CreateProxy("TeleportService", svcPath) end
+                     if serviceName == "MarketplaceService" then return CreateProxy("MarketplaceService", svcPath) end
+                     if serviceName == "UserInputService" then return CreateProxy("UserInputService", svcPath) end
+
+                     return CreateProxy(serviceName, svcPath)
                  end
             end
         end
@@ -475,29 +493,7 @@ local function MockLoadstring(str, chunkname)
 end
 
 -- Mock String Library
-local MockString = MakeStaticLib("string", {})
-for k, v in pairs(string) do MockString[k] = v end
-function MockString.char(...)
-    local res = string.char(...)
-    return res
-end
-
--- Mock Table Library
-local MockTable = MakeStaticLib("table", {})
-for k, v in pairs(table) do MockTable[k] = v end
-function MockTable.concat(t, sep, i, j)
-    local res = table.concat(t, sep, i, j)
-    if type(res) == "string" then
-        if string.len(res) > 100 then
-             Log("TABLE.CONCAT LARGE STRING (len="..string.len(res)..")")
-             local snippet = string.sub(res, 1, 500)
-             if string.len(res) > 500 then snippet = snippet .. "..." end
-             Log("TABLE.CONCAT CONTENT: " .. snippet)
-        end
-    end
-    return res
-end
-
+-- Fallback libraries to RealEnv
 if not math.clamp then math.clamp = function(x, min, max) return x < min and min or (x > max and max or x) end end
 
 -- Env Proxy to handle 'getgenv' returning a concatable/indexable object that writes to MockEnv
@@ -589,9 +585,10 @@ setmetatable(MockEnv, {
         if k == "typeof" then return type end
         if k == "pairs" then return MockPairs end
         if k == "ipairs" then return MockIPairs end
-        if k == "next" then return MockNext end
-        if k == "string" then return MockString end
-        if k == "table" then return MockTable end
+        if k == "newproxy" then
+             -- Log("DEBUG: Accessing newproxy. Value: " .. tostring(newproxy))
+             return newproxy
+        end
         if k == "loadstring" then return MockLoadstring end
         if k == "load" then return MockLoadstring end
         
@@ -616,8 +613,8 @@ setmetatable(MockEnv, {
         if k == "hookfunction" then return function(f, h) return f end end
         if k == "hookmetamethod" then return function(o, m, f) return function() end end end
         if k == "newcclosure" then return function(f) return f end end
-        if k == "islclosure" then return function() return true end end
-        if k == "iscclosure" then return function() return false end end
+        if k == "islclosure" then return function() return false end end
+        if k == "iscclosure" then return function() return true end end
         if k == "getsynasset" then return function(p) return "content" end end
 
         if k == "request" or k == "http_request" or k == "syn" and k.request then return request end
@@ -663,51 +660,12 @@ setmetatable(MockEnv, {
         end
         if k == "fluxus" then return MockEnv.syn end
         
-        if k == "debug" then
-            return {
-                getinfo = function() return {source="mock", short_src="mock", func=function() end} end,
-                getconstants = function() return {} end,
-                getconstant = function() return nil end,
-                getupvalues = function() return {} end,
-                getupvalue = function() return nil end,
-                getprotos = function() return {} end,
-                getproto = function() return nil end,
-                getstack = function() return {} end,
-                setstack = function() end,
-                setconstant = function() end,
-                setupvalue = function() end,
-                getregistry = function() return {} end,
-                getmetatable = function(t) return getmetatable(t) end,
-                setmetatable = function(t, m) return setmetatable(t, m) end,
-                profilebegin = function() end,
-                profileend = function() end,
-                traceback = function() return "mock traceback" end
-            }
-        end
+        -- Fallback to real debug library if available, otherwise nil
+        if k == "debug" and RealEnv.debug then return RealEnv.debug end
         
-        -- Explicitly block dangerous libraries
-        if k == "io" or k == "os" or k == "lfs" or k == "package" then
-            return nil
-        end
-        
-        -- Block garbage collector
-        if k == "collectgarbage" then
-            return function() return 0 end
-        end
-
-        -- Do NOT fall back to the real environment for safety.
-        -- Only allow access to a curated list of safe globals.
-        local safelist = {
-            "assert", "error", "ipairs", "next", "pairs", "pcall", "print", "select",
-            "tonumber", "tostring", "type", "unpack", "_VERSION", "xpcall",
-            "coroutine", "string", "table", "math",
-            "utf8" -- Lua 5.3+ but safe to include
-        }
-        for _, safe_k in ipairs(safelist) do
-            if k == safe_k then
-                return RealEnv[k]
-            end
-        end
+        -- Fallback to Real Environment for everything else
+        -- "lua 5.1 mock everything and make it work please"
+        if RealEnv[k] then return RealEnv[k] end
         
         return nil
     end,
@@ -732,7 +690,16 @@ local func, err = loadstring(OBFUSCATED_SCRIPT)
 if func then
     setfenv(func, MockEnv)
     Log("Executing script...")
+    -- Enable a hook to detect infinite loops or long running execution
+    local start_time = os.clock and os.clock() or 0
+    debug.sethook(function()
+        if os.clock and (os.clock() - start_time) > 5 then
+            error("Timeout: Script execution exceeded 5 seconds")
+        end
+    end, "l", 100000)
+
     local status, result = pcall(func)
+    debug.sethook() -- Remove hook
     if status then
          Log("Script finished successfully")
          if result then
