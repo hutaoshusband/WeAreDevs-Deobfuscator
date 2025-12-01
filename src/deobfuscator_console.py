@@ -154,7 +154,8 @@ def main():
         
         try:
             print("Executing dynamic analysis with Lua...")
-            result = subprocess.run([lua_exec, tmp_path], capture_output=True, timeout=30)
+            # Increased timeout to 120 seconds for heavy obfuscation
+            result = subprocess.run([lua_exec, tmp_path], capture_output=True, timeout=120)
             
             stdout = result.stdout.decode('utf-8', errors='replace')
             stderr = result.stderr.decode('utf-8', errors='replace')
@@ -174,7 +175,7 @@ def main():
                     out_f.write("-- No dynamic output was captured --")
                 
         except subprocess.TimeoutExpired:
-            print("FATAL: Lua script execution timed out after 30 seconds.", file=sys.stderr)
+            print("FATAL: Lua script execution timed out after 120 seconds.", file=sys.stderr)
             sys.exit(1)
         finally:
             if os.path.exists(tmp_path):

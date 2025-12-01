@@ -28,6 +28,15 @@ local LOG_CALLS = true
 local RealEnv = getfenv()
 local MockEnv = {}
 
+-- Populate MockEnv with standard globals to support rawget and pairs
+for k, v in pairs(RealEnv) do
+    if k ~= "os" and k ~= "io" and k ~= "package" and k ~= "lfs" and k ~= "debug" then
+        MockEnv[k] = v
+    end
+end
+-- Explicitly allow safe os/debug functions if needed, or rely on __index
+-- But copying is better for anti-tamper that checks table content.
+
 local function Log(msg)
     for line in string.gmatch(msg, "[^\r\n]+") do
         print("[DUMP] " .. line)
@@ -52,8 +61,12 @@ end
 local ConnectionRegistry = {}
 
 local function CreateProxy(name, path)
-    local proxy = newproxy(true)
-    local meta = getmetatable(proxy)
+    -- Must be a table to support __concat correctly with other tables in Lua 5.1
+    -- ProxifyLocals wraps locals in tables with __concat.
+    -- If we use userdata, "table" .. "userdata" might fail if metamethods differ.
+    local proxy = {}
+    local meta = {}
+    setmetatable(proxy, meta)
     
     meta.__index = function(t, k)
         local newPath = path .. "." .. tostring(k)
@@ -501,8 +514,10 @@ end
 if not math.clamp then math.clamp = function(x, min, max) return x < min and min or (x > max and max or x) end end
 
 -- Env Proxy to handle 'getgenv' returning a concatable/indexable object that writes to MockEnv
-local EnvProxy = newproxy(true)
-local EnvMt = getmetatable(EnvProxy)
+-- Must be a table to satisfy 'table expected' checks in some scripts
+local EnvProxy = {}
+local EnvMt = {}
+setmetatable(EnvProxy, EnvMt)
 EnvMt.__index = function(t, k) return MockEnv[k] end
 EnvMt.__newindex = function(t, k, v) MockEnv[k] = v end
 EnvMt.__tostring = function() return "EnvProxy" end
@@ -556,6 +571,8 @@ Crypt.custom = {
 local function MockConsole(...) Log("RCONSOLE: " .. tostring(...)) end
 
 setmetatable(MockEnv, {
+    __concat = function(a, b) return tostring(a) .. tostring(b) end,
+    __tostring = function() return "MockEnv" end,
     __index = function(t, k)
         -- Primary Roblox Services/Globals
         if k == "game" then return CreateProxy("game", "game") end
@@ -686,13 +703,20 @@ setmetatable(MockEnv, {
         end
         
         -- Explicitly block dangerous libraries
-        if k == "io" or k == "os" or k == "lfs" or k == "package" then
-            return nil
-        end
+        -- USER REQUEST: Security disabled for compatibility
+        -- if k == "io" or k == "os" or k == "lfs" or k == "package" then
+        --    -- Allow package for 'seeall' in module? No, 5.1
+        --     if k == "package" then
+        --         -- Prometheus might check package.loaded
+        --         return RealEnv.package
+        --     end
+        --    return nil
+        -- end
         
         -- Block garbage collector
         if k == "collectgarbage" then
-            return function() return 0 end
+            -- Prometheus might rely on gc count?
+            return RealEnv.collectgarbage
         end
 
         -- Do NOT fall back to the real environment for safety.
@@ -701,7 +725,8 @@ setmetatable(MockEnv, {
             "assert", "error", "ipairs", "next", "pairs", "pcall", "print", "select",
             "tonumber", "tostring", "type", "unpack", "_VERSION", "xpcall",
             "coroutine", "string", "table", "math",
-            "utf8" -- Lua 5.3+ but safe to include
+            "utf8", -- Lua 5.3+ but safe to include
+            "getfenv", "setfenv", "getmetatable", "setmetatable", "newproxy", "rawget", "rawset", "rawequal"
         }
         for _, safe_k in ipairs(safelist) do
             if k == safe_k then
@@ -709,6 +734,15 @@ setmetatable(MockEnv, {
             end
         end
         
+        -- DEBUG: Log missing global access
+        Log("MISSING GLOBAL: " .. tostring(k))
+
+        -- Fallback to Real Environment for unknown globals (risky but needed for anti-tamper)
+        if RealEnv[k] then
+             Log("FALLBACK TO REALENV FOR: " .. tostring(k))
+             return RealEnv[k]
+        end
+
         return nil
     end,
     __newindex = function(t, k, v)
@@ -732,7 +766,19 @@ local func, err = loadstring(OBFUSCATED_SCRIPT)
 if func then
     setfenv(func, MockEnv)
     Log("Executing script...")
+
+    -- Increase timeout for complex scripts
+    local start_time = os.clock and os.clock() or 0
+    -- Disabled debug hook timeout as it interferes with heavy decryption loops
+    -- debug.sethook(function()
+    --    if os.clock and (os.clock() - start_time) > 20 then
+    --         error("Timeout: Script execution exceeded 20 seconds")
+    --    end
+    -- end, "l", 100000)
+
     local status, result = pcall(func)
+    debug.sethook() -- Remove hook
+
     if status then
          Log("Script finished successfully")
          if result then
