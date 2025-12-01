@@ -1,0 +1,1 @@
+pyinstaller --onefile --console --clean --name WeAreDevsDeobfuscator --add-data "dumper.lua;." deobfuscator_console.py
