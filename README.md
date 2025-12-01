@@ -1,82 +1,127 @@
-# WeAreDevs Lua Deobfuscator
+# FireflyProtector Website
 
-A toolkit for analyzing and deobfuscating Lua scripts protected by the WeAreDevs obfuscator (v1.0.0).
+Official website for FireflyProtector - Advanced Application Security Solution.
 
-## Overview
+## Features
 
-This project provides tools to dynamically analyze obfuscated Lua scripts by running them in a mocked Roblox/Exploit environment. It intercepts key function calls (like `loadstring`, `game:GetService`, `table.concat`) to reveal the underlying logic and payloads.
-
-## Tools
-
-### 1. Dynamic Dumper (`tools/run_dumper.py`)
-The primary tool. It wraps the obfuscated script in a Lua environment mock (`tools/dumper.lua`) and executes it using Lua 5.1.
-
-**Features:**
-- Mocks Roblox Globals: `game`, `workspace`, `script`, `Instance`, `Vector3`, `CFrame`, `Drawing`, etc.
-- Mocks Exploit Environment: `getgenv`, `checkcaller`, `identifyexecutor`.
-- Logging: Captures `print`, `warn`, `SetCore` notifications, and `loadstring` content.
-- Robustness: Handles complex obfuscation techniques involving string shuffling and proxy objects.
-
-### 2. Static Extractor (`tools/extract_strings.py`)
-Attempts to statically extract encrypted strings from the script file.
-
-## Prerequisites
-
-- **Lua 5.1**: Required to run the dumper.
-  - Ubuntu/Debian: `sudo apt install lua5.1`
-  - MacOS: `brew install lua@5.1`
-  - Windows: Download from [LuaBinaries](http://luabinaries.sourceforge.net/) or place `lua.exe` next to the deobfuscator executable
+- 🔐 **Secure Architecture**: Flat structure with `.htaccess` protection
+- 🎨 **Modern Design**: Dark mode with glassmorphism and gradients
+- 📱 **Responsive**: Mobile-first design
+- 📖 **Documentation**: Integrated user guide with Markdown support
+- ⚠️ **Error Reference**: Interactive error code table with search and filtering
+- 💬 **Support Integration**: Discord community integration
 
 ## Installation
 
-### Option 1: Pre-built Binary (Windows)
+### Prerequisites
 
-Download the latest pre-built `deobfuscator.exe` from the [Releases](https://github.com/HUTAOSHUSBAND/WeAreDevs-Deobfuscator/releases) page.
+- PHP 7.4 or higher
+- Apache with `mod_rewrite` enabled
+- Composer
 
-**Requirements:**
-- Place `lua.exe` (Lua 5.1) in the same folder as `deobfuscator.exe`, or have it in your system PATH
+### Setup
 
-**Usage:**
-1. Run `deobfuscator.exe`
-2. Drag and drop your obfuscated `.lua` file into the console
-3. The deobfuscated output will be saved as `filename_deobfuscated.lua`
-
-### Option 2: Run from Source
-
-Clone the repository and use the Python tools directly (see Usage section below).
-
-## Usage
-
-### Running the Dumper
-
-To analyze a single obfuscated file:
+1. Clone the repository:
 ```bash
-python3 tools/run_dumper.py path/to/obfuscated_script.lua
+git clone https://github.com/your-username/FireflyProtector-Website.git
+cd FireflyProtector-Website
 ```
 
-To analyze a directory of scripts:
+2. Install dependencies:
 ```bash
-python3 tools/run_dumper.py path/to/folder/
+composer install
 ```
 
-The tool will output the execution logs, including:
-- `[DUMP] ...`: Intercepted calls and values.
-- `LOADSTRING CONTENT`: The code being dynamically loaded (the payload).
-- `TABLE.CONCAT LARGE STRING`: Potential encrypted payloads being built.
-
-### Example Output
-
-```
-[DUMP] game.StarterGui:SetCore("SendNotification", { ... })
-[DUMP] LOADSTRING DETECTED (len=1024)
-[DUMP] LOADSTRING CONTENT: print("Hello World")
+3. Copy `.env.example` to `.env` and configure:
+```bash
+copy .env.example .env
 ```
 
-## Status
+4. Edit `.env` with your settings:
+```
+APP_DEBUG=false
+DISCORD_INVITE_URL=https://discord.com/invite/dUCNKkS2Ve
+```
 
-- **Basic/Hard Scripts**: Supported. The dumper successfully runs these scripts and captures notifications and string construction.
-- **Extreme Scripts**: Experimental. Some highly obfuscated scripts may crash due to sensitive anti-tamper checks or complex VM logic.
+5. Ensure Apache has `AllowOverride All` for `.htaccess`:
+```apache
+<Directory "/var/www/fireflyprotector">
+    AllowOverride All
+</Directory>
+```
 
-## Documentation
+6. Point your domain to the root directory (not to a `public` folder).
 
-See [docs/DEOBFUSCATION_NOTES.md](docs/DEOBFUSCATION_NOTES.md) for detailed analysis notes.
+## Security Testing
+
+After installation, verify security is working:
+
+```bash
+# Should work (200 OK)
+curl http://yoursite.xyz/
+curl http://yoursite.xyz/assets/css/style.css
+
+# Should be blocked (403 Forbidden)
+curl http://yoursite.xyz/.env
+curl http://yoursite.xyz/app/Controllers/HomeController.php
+curl http://yoursite.xyz/storage/docs/user-guide.md
+curl http://yoursite.xyz/vendor/autoload.php
+```
+
+## Directory Structure
+
+```
+/
+├── .htaccess           # Security rules & routing
+├── .env               # Environment configuration (DO NOT COMMIT)
+├── index.php          # Entry point
+├── composer.json      # Dependencies
+├── /app               # Application code (PROTECTED)
+│   ├── /Controllers
+│   ├── /Core
+│   ├── /Config
+│   └── /Views
+├── /assets            # Public files (CSS, images)
+│   ├── /css
+│   └── /img
+├── /storage           # Protected storage
+│   └── /docs
+└── /vendor            # Composer dependencies (PROTECTED)
+```
+
+## Routes
+
+- `/` - Homepage
+- `/about` - About page
+- `/docs` - Documentation overview
+- `/docs/user-guide` - User guide
+- `/docs/error-codes` - Error codes reference
+- `/support` - Support page
+
+## Development
+
+The application uses a simple MVC architecture:
+
+- **Controllers**: Handle requests in `/app/Controllers`
+- **Views**: Template files in `/app/Views`
+- **Router**: Simple routing in `/app/Core/Router.php`
+- **Routes**: Defined in `/app/Config/routes.php`
+
+## Contributing
+
+Contributions are welcome! Please ensure:
+
+1. All sensitive directories remain protected by `.htaccess`
+2. New routes are added to `/app/Config/routes.php`
+3. CSS follows the existing design system
+4. Code follows PSR-4 autoloading standards
+
+## License
+
+Proprietary - All rights reserved.
+
+## Support
+
+Join our Discord: [https://discord.com/invite/dUCNKkS2Ve](https://discord.com/invite/dUCNKkS2Ve)
+
+**Note:** Active development and support have continued on GitHub. Please feel free to contribute or report issues by opening a ticket in the repository. The official website remains available for documentation and community resources.
