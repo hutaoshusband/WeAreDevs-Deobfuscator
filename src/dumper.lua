@@ -23,7 +23,7 @@ local OBFUSCATED_SCRIPT = [[
 -- PASTE YOUR OBFUSCATED SCRIPT HERE --
 ]]
 
-local LOG_CALLS = true
+local LOG_CALLS = false
 
 local RealEnv = getfenv()
 local MockEnv = {}
@@ -701,7 +701,8 @@ setmetatable(MockEnv, {
             "assert", "error", "ipairs", "next", "pairs", "pcall", "print", "select",
             "tonumber", "tostring", "type", "unpack", "_VERSION", "xpcall",
             "coroutine", "string", "table", "math",
-            "utf8" -- Lua 5.3+ but safe to include
+            "utf8", -- Lua 5.3+ but safe to include
+            "setmetatable", "getmetatable", "newproxy", "getfenv", "setfenv", "rawequal", "rawget", "rawset"
         }
         for _, safe_k in ipairs(safelist) do
             if k == safe_k then

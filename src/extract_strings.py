@@ -2,6 +2,9 @@ import re
 import sys
 import os
 import ast
+import subprocess
+import tempfile
+import shutil
 
 def solve_expr(expr):
     """
@@ -21,9 +24,6 @@ def solve_expr(expr):
                  # If we encounter anything unsafe (like Call, Attribute, Name, etc.), fail safely
                  return 0
         
-        # Safe to evaluate using eval since we checked the structure,
-        # but to be extra safe, we can limit the globals/locals.
-        # Although ast.literal_eval is safer, it doesn't support operators.
         return eval(expr, {"__builtins__": None}, {})
     except Exception as e:
         return 0
@@ -40,11 +40,102 @@ def decode_lua_string(s):
         s = s.replace(k, v)
     return s
 
+def find_lua_executable():
+    if getattr(sys, 'frozen', False):
+        base_path = os.path.dirname(sys.executable)
+        local_lua = os.path.join(base_path, "lua.exe")
+        if os.path.exists(local_lua): return local_lua
+        
+    for cmd in ["lua5.1", "lua", "luajit"]:
+        path = shutil.which(cmd)
+        if path:
+            return path
+    return None
+
+def hybrid_decrypt_strings(content):
+    """
+    Attempt to decrypt strings by injecting a dumper payload into the script
+    and running it with Lua. This handles "extreme" obfuscation where strings 
+    are decrypted at runtime before the VM starts.
+    """
+    lua_exec = find_lua_executable()
+    if not lua_exec:
+        return None
+
+    # Detect the string table variable at the start of the file
+    match_table_def = re.search(r'^\s*--\[\[.*?\]\]\s*return\s*\(\s*function\s*\(\s*\.\.\.\s*\)\s*local\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*\{', content)
+    if not match_table_def:
+        # Fallback for files without header or different formatting
+        match_table_def = re.search(r'return\s*\(\s*function\s*\(\s*\.\.\.\s*\)\s*local\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*\{', content)
+    
+    if not match_table_def:
+        return None
+        
+    string_table_var = match_table_def.group(1)
+    
+    # Construct the dumper payload
+    dumper_code = f' for i,v in ipairs({string_table_var}) do if type(v)=="string" then print("DEC_STR: "..v) end end os.exit(0) '
+    
+    # Find the injection point: return(function(S,j...
+    # We look for the VM return which usually takes the string table variable as the first argument (or similar)
+    # The regex matches return(function(VAR, ...
+    injection_marker = f'return(function({string_table_var},'
+    
+    if injection_marker not in content:
+        # Try finding just return(function(VAR
+        injection_marker = f'return(function({string_table_var}'
+        if injection_marker not in content:
+             return None
+
+    # Inject the code BEFORE the return(function...
+    # We use replace with count=1 to be safe, but since we are looking for a specific inner return, we need to be careful.
+    # The file structure is: return(function(...) ... return(function(S...) ... end)(...) end)(...)
+    # We want to replace the SECOND return(function, or specifically the one with arguments.
+    
+    # Since string replacement finds the first occurrence, and the first occurrence is return(function(...) (with dots),
+    # and our marker includes the variable name (e.g. S), it should be unique enough.
+    
+    modified_content = content.replace(injection_marker, dumper_code + injection_marker, 1)
+    
+    # Write to temp file
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False, encoding='latin1') as tmp:
+        tmp.write(modified_content)
+        tmp_path = tmp.name
+        
+    try:
+        result = subprocess.run([lua_exec, tmp_path], capture_output=True, timeout=10, text=True, encoding='latin1', errors='replace')
+        output = result.stdout
+        
+        decrypted_strings = []
+        for line in output.splitlines():
+            if line.startswith("DEC_STR: "):
+                decrypted_strings.append(line[9:])
+        
+        if decrypted_strings:
+            return decrypted_strings
+            
+    except Exception as e:
+        pass
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+            
+    return None
+
 def get_decrypted_strings(content):
     """
     Extract and decrypt strings from obfuscated Lua content.
     Returns a list of decrypted strings.
     """
+    
+    # Try Hybrid approach first for "extreme" obfuscation signatures
+    # Signature: return(function(...) local S={...} ... return(function(S,
+    if "return(function" in content and "ipairs" in content:
+        hybrid_result = hybrid_decrypt_strings(content)
+        if hybrid_result:
+            return hybrid_result
+
+    # Fallback to Static Analysis
     match_func = re.search(r'return\s*\(\s*function\s*\(\s*\.\.\.\s*\)', content)
     if not match_func:
         return []

@@ -1,3 +1,22 @@
+# ⚠️ DISCLAIMER: NO UPDATES / NO SUPPORT ⚠️
+
+**READ THIS BEFORE USING OR DOWNLOADING:**
+
+**I DO NOT GIVE UPDATES FOR THIS DEOBFUSCATOR.**
+**I DO NOT PROVIDE SUPPORT FOR THIS DEOBFUSCATOR.**
+
+This project is **ARCHIVED** and provided **"AS-IS"**. 
+
+*   If the tool does not work for your specific script: **I will not fix it.**
+*   If you encounter a bug: **I will not fix it.**
+*   If you don't know how to use it: **I will not help you.**
+
+I am not the developer of the obfuscator itself. I created this tool for a specific use case, and I am sharing it as open source. **We are not responsible if this Open Source Tool does not work correctly.**
+
+**If it does not work, FIX IT YOURSELF.** Clone the repository and modify the code. Do not ask for help on Discord or GitHub issues expecting a fix from me. I do not have the time to maintain this project or provide technical support.
+
+---
+
 # WeAreDevs Lua Deobfuscator / Prometheus Deobfuscator
 
 A toolkit for analyzing and deobfuscating Lua scripts protected by the WeAreDevs obfuscator (v1.0.0).
@@ -8,8 +27,8 @@ This project provides tools to dynamically analyze obfuscated Lua scripts by run
 
 ## Tools
 
-### 1. Dynamic Dumper (`tools/run_dumper.py`)
-The primary tool. It wraps the obfuscated script in a Lua environment mock (`tools/dumper.lua`) and executes it using Lua 5.1.
+### 1. Dynamic Dumper (`src/deobfuscator_console.py`)
+The primary tool. It wraps the obfuscated script in a Lua environment mock (`src/dumper.lua`) and executes it using Lua 5.1.
 
 **Features:**
 - Mocks Roblox Globals: `game`, `workspace`, `script`, `Instance`, `Vector3`, `CFrame`, `Drawing`, etc.
@@ -17,7 +36,7 @@ The primary tool. It wraps the obfuscated script in a Lua environment mock (`too
 - Logging: Captures `print`, `warn`, `SetCore` notifications, and `loadstring` content.
 - Robustness: Handles complex obfuscation techniques involving string shuffling and proxy objects.
 
-### 2. Static Extractor (`tools/extract_strings.py`)
+### 2. Static Extractor (`src/extract_strings.py`)
 Attempts to statically extract encrypted strings from the script file.
 
 ## Prerequisites
@@ -47,22 +66,14 @@ Clone the repository and use the Python tools directly (see Usage section below)
 
 ## Usage
 
-### Running the Dumper
+### Running the Console Tool
 
-To analyze a single obfuscated file:
+To analyze a single obfuscated file using the console tool:
 ```bash
-python3 tools/run_dumper.py path/to/obfuscated_script.lua
+python3 src/deobfuscator_console.py path/to/obfuscated_script.lua output_path.lua decompile
 ```
 
-To analyze a directory of scripts:
-```bash
-python3 tools/run_dumper.py path/to/folder/
-```
-
-The tool will output the execution logs, including:
-- `[DUMP] ...`: Intercepted calls and values.
-- `LOADSTRING CONTENT`: The code being dynamically loaded (the payload).
-- `TABLE.CONCAT LARGE STRING`: Potential encrypted payloads being built.
+The tool will output the execution logs and save the deobfuscated content to the output path.
 
 ### Example Output
 
@@ -75,8 +86,12 @@ The tool will output the execution logs, including:
 ## Status
 
 - **Basic/Hard Scripts**: Supported. The dumper successfully runs these scripts and captures notifications and string construction.
-- **Extreme Scripts**: Experimental. Some highly obfuscated scripts may crash due to sensitive anti-tamper checks or complex VM logic.
+- **Extreme Scripts**: Supported (Experimental). Uses a hybrid extraction method to recover decrypted strings at runtime.
 
 ## Documentation
 
 See [docs/DEOBFUSCATION_NOTES.md](docs/DEOBFUSCATION_NOTES.md) for detailed analysis notes.
+
+---
+
+**REMINDER: NO UPDATES. NO SUPPORT. FIX IT YOURSELF.**
